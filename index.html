@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>System Clock Timer</title>
+
+<style>
+body {
+    background:#111;
+    color:#fff;
+    font-family:Arial,sans-serif;
+    height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+}
+
+.timer-box {
+    background:#1e1e1e;
+    padding:28px;
+    border-radius:12px;
+    width:400px;
+    text-align:center;
+}
+
+.time {
+    font-size:64px;
+    margin-bottom:18px;
+}
+
+.time span {
+    padding:4px 8px;
+    border-radius:6px;
+}
+
+.group { margin:16px 0; }
+
+.label {
+    font-size:14px;
+    color:#aaa;
+    margin-bottom:8px;
+}
+
+.columns {
+    display:flex;
+    justify-content:center;
+    gap:16px;
+}
+
+.col {
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+}
+
+.adjust {
+    border:none;
+    border-radius:6px;
+    padding:6px 12px;
+    font-size:14px;
+    min-width:56px;
+    color:#fff;
+    cursor:pointer;
+}
+
+.adjust:disabled {
+    opacity:0.4;
+    cursor:not-allowed;
+}
+
+.add-btn { background:#27ae60; }
+.sub-btn { background:#c0392b; }
+.start   { background:#2ecc71; }
+.pause   { background:#3498db; }
+.reset   { background:#f39c12; }
+.stop    { background:#e74c3c; }
+</style>
+</head>
+
+<body>
+
+<div class="timer-box">
+
+    <div class="time">
+        <span id="minutes" contenteditable="true">00</span> :
+        <span id="seconds" contenteditable="true">00</span>
+    </div>
+
+    <!-- MINUTES -->
+    <div class="group">
+        <div class="label">Minutes</div>
+        <div class="columns">
+            <div class="col">
+                <button class="adjust sub-btn" data-sec="-60">−1</button>
+                <button class="adjust add-btn" data-sec="60">+1</button>
+            </div>
+            <div class="col">
+                <button class="adjust sub-btn" data-sec="-300">−5</button>
+                <button class="adjust add-btn" data-sec="300">+5</button>
+            </div>
+            <div class="col">
+                <button class="adjust sub-btn" data-sec="-600">−10</button>
+                <button class="adjust add-btn" data-sec="600">+10</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECONDS -->
+    <div class="group">
+        <div class="label">Seconds</div>
+        <div class="columns">
+            <div class="col">
+                <button class="adjust sub-btn" data-sec="-10">−10</button>
+                <button class="adjust add-btn" data-sec="10">+10</button>
+            </div>
+            <div class="col">
+                <button class="adjust sub-btn" data-sec="-30">−30</button>
+                <button class="adjust add-btn" data-sec="30">+30</button>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-top:18px">
+        <button id="startBtn" class="adjust start">Start</button>
+        <button id="pauseBtn" class="adjust pause" disabled>Pause</button>
+        <button id="resetBtn" class="adjust reset">Reset</button>
+        <button id="stopBtn" class="adjust stop">Stop Alarm</button>
+    </div>
+
+</div>
+
+<audio id="alarm" src="alarm.mp3"></audio>
+
+<script>
+let running = false;
+let paused = false;
+let endTime = 0;
+let lastStartedSeconds = 0;
+let tickTimeout, alarmTimeout;
+
+const minEl = document.getElementById("minutes");
+const secEl = document.getElementById("seconds");
+const alarm = document.getElementById("alarm");
+alarm.volume = 0.15;
+
+const startBtn = document.getElementById("startBtn");
+const pauseBtn = document.getElementById("pauseBtn");
+const resetBtn = document.getElementById("resetBtn");
+const stopBtn = document.getElementById("stopBtn");
+const adjustButtons = document.querySelectorAll("[data-sec]");
+
+/* helpers */
+function getTotalSeconds() {
+    return (parseInt(minEl.innerText)||0)*60 + (parseInt(secEl.innerText)||0);
+}
+
+function updateDisplay(sec) {
+    sec = Math.max(0, sec);
+    minEl.innerText = String(Math.floor(sec/60)).padStart(2,"0");
+    secEl.innerText = String(sec%60).padStart(2,"0");
+}
+
+function setEditable(state) {
+    minEl.contentEditable = state;
+    secEl.contentEditable = state;
+    adjustButtons.forEach(b => b.disabled = !state);
+}
+
+/* ticking */
+function tick() {
+    if (!running || paused) return;
+
+    const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+    updateDisplay(remaining);
+
+    if (remaining === 0) {
+        running = false;
+        playAlarm();
+        updateDisplay(lastStartedSeconds);
+        startBtn.disabled = false;
+        pauseBtn.disabled = true;
+        pauseBtn.innerText = "Pause";
+        setEditable(true);
+        return;
+    }
+
+    tickTimeout = setTimeout(tick, (endTime - Date.now()) % 1000 || 1000);
+}
+
+/* controls */
+startBtn.onclick = () => {
+    if (running) return;
+
+    const total = getTotalSeconds();
+    if (total <= 0) return;
+
+    lastStartedSeconds = total;
+    endTime = Date.now() + total * 1000;
+    running = true;
+    paused = false;
+
+    startBtn.disabled = true;
+    pauseBtn.disabled = false;
+    pauseBtn.innerText = "Pause";
+    setEditable(false);
+
+    tick();
+};
+
+pauseBtn.onclick = () => {
+    if (!running) return;
+
+    if (!paused) {
+        paused = true;
+        pauseBtn.innerText = "Resume";
+        setEditable(true);
+    } else {
+        const editedSeconds = getTotalSeconds(); // 🔥 FIX
+        endTime = Date.now() + editedSeconds * 1000;
+        paused = false;
+        pauseBtn.innerText = "Pause";
+        setEditable(false);
+        tick();
+    }
+};
+
+resetBtn.onclick = () => {
+    running = false;
+    paused = false;
+    clearTimeout(tickTimeout);
+    stopAlarm();
+    updateDisplay(0);
+    startBtn.disabled = false;
+    pauseBtn.disabled = true;
+    pauseBtn.innerText = "Pause";
+    setEditable(true);
+};
+
+stopBtn.onclick = stopAlarm;
+
+/* adjust buttons */
+adjustButtons.forEach(btn => {
+    btn.onclick = () => {
+        if (running && !paused) return;
+        updateDisplay(getTotalSeconds() + parseInt(btn.dataset.sec));
+    };
+});
+
+/* alarm */
+function playAlarm() {
+    stopAlarm();
+    alarm.currentTime = 0;
+    alarm.play();
+    alarmTimeout = setTimeout(stopAlarm, 3000);
+}
+
+function stopAlarm() {
+    clearTimeout(alarmTimeout);
+    alarm.pause();
+    alarm.currentTime = 0;
+}
+</script>
+
+</body>
+</html>
