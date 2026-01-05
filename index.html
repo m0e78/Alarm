@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>System Clock Timer</title>
+<title>Accurate Timer</title>
 
 <style>
 body {
@@ -19,7 +19,7 @@ body {
     background:#1e1e1e;
     padding:28px;
     border-radius:12px;
-    width:400px;
+    width:420px;
     text-align:center;
 }
 
@@ -91,16 +91,19 @@ body {
         <div class="label">Minutes</div>
         <div class="columns">
             <div class="col">
-                <button class="adjust sub-btn" data-sec="-60">−1</button>
                 <button class="adjust add-btn" data-sec="60">+1</button>
+                <button class="adjust sub-btn" data-sec="-60">−1</button>
+				
             </div>
             <div class="col">
-                <button class="adjust sub-btn" data-sec="-300">−5</button>
                 <button class="adjust add-btn" data-sec="300">+5</button>
+				<button class="adjust sub-btn" data-sec="-300">−5</button>
+                
             </div>
             <div class="col">
-                <button class="adjust sub-btn" data-sec="-600">−10</button>
                 <button class="adjust add-btn" data-sec="600">+10</button>
+				<button class="adjust sub-btn" data-sec="-600">−10</button>
+                
             </div>
         </div>
     </div>
@@ -110,12 +113,14 @@ body {
         <div class="label">Seconds</div>
         <div class="columns">
             <div class="col">
-                <button class="adjust sub-btn" data-sec="-10">−10</button>
                 <button class="adjust add-btn" data-sec="10">+10</button>
+				<button class="adjust sub-btn" data-sec="-10">−10</button>
+                
             </div>
             <div class="col">
-                <button class="adjust sub-btn" data-sec="-30">−30</button>
                 <button class="adjust add-btn" data-sec="30">+30</button>
+				<button class="adjust sub-btn" data-sec="-30">−30</button>
+                
             </div>
         </div>
     </div>
@@ -135,7 +140,6 @@ body {
 let running = false;
 let paused = false;
 let endTime = 0;
-let lastStartedSeconds = 0;
 let tickTimeout, alarmTimeout;
 
 const minEl = document.getElementById("minutes");
@@ -149,7 +153,7 @@ const resetBtn = document.getElementById("resetBtn");
 const stopBtn = document.getElementById("stopBtn");
 const adjustButtons = document.querySelectorAll("[data-sec]");
 
-/* helpers */
+/* ---------- helpers ---------- */
 function getTotalSeconds() {
     return (parseInt(minEl.innerText)||0)*60 + (parseInt(secEl.innerText)||0);
 }
@@ -166,7 +170,49 @@ function setEditable(state) {
     adjustButtons.forEach(b => b.disabled = !state);
 }
 
-/* ticking */
+/* ---------- typing fix (normal typing) ---------- */
+[minEl, secEl].forEach(el => {
+
+    el.addEventListener("focus", () => {
+        const raw = el.innerText.replace(/\D/g,"");
+        el.innerText = raw;
+
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        const s = window.getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+    });
+
+    el.addEventListener("keydown", e => {
+        if (
+            !/[0-9]/.test(e.key) &&
+            !["Backspace","Delete","ArrowLeft","ArrowRight","Tab"].includes(e.key)
+        ) {
+            e.preventDefault();
+        }
+    });
+
+    el.addEventListener("input", () => {
+        let v = el.innerText.replace(/\D/g,"").slice(0,2);
+        el.innerText = v;
+
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        r.collapse(false);
+        const s = window.getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+    });
+
+    el.addEventListener("blur", () => {
+        let v = el.innerText.replace(/\D/g,"");
+        if (el === secEl && parseInt(v || 0) > 59) v = "59";
+        el.innerText = String(parseInt(v || 0)).padStart(2,"0");
+    });
+});
+
+/* ---------- ticking ---------- */
 function tick() {
     if (!running || paused) return;
 
@@ -176,7 +222,7 @@ function tick() {
     if (remaining === 0) {
         running = false;
         playAlarm();
-        updateDisplay(lastStartedSeconds);
+        updateDisplay(0);
         startBtn.disabled = false;
         pauseBtn.disabled = true;
         pauseBtn.innerText = "Pause";
@@ -187,14 +233,13 @@ function tick() {
     tickTimeout = setTimeout(tick, (endTime - Date.now()) % 1000 || 1000);
 }
 
-/* controls */
+/* ---------- controls ---------- */
 startBtn.onclick = () => {
     if (running) return;
 
     const total = getTotalSeconds();
     if (total <= 0) return;
 
-    lastStartedSeconds = total;
     endTime = Date.now() + total * 1000;
     running = true;
     paused = false;
@@ -215,8 +260,7 @@ pauseBtn.onclick = () => {
         pauseBtn.innerText = "Resume";
         setEditable(true);
     } else {
-        const editedSeconds = getTotalSeconds(); // 🔥 FIX
-        endTime = Date.now() + editedSeconds * 1000;
+        endTime = Date.now() + getTotalSeconds() * 1000;
         paused = false;
         pauseBtn.innerText = "Pause";
         setEditable(false);
@@ -238,7 +282,7 @@ resetBtn.onclick = () => {
 
 stopBtn.onclick = stopAlarm;
 
-/* adjust buttons */
+/* ---------- adjust buttons ---------- */
 adjustButtons.forEach(btn => {
     btn.onclick = () => {
         if (running && !paused) return;
@@ -246,7 +290,7 @@ adjustButtons.forEach(btn => {
     };
 });
 
-/* alarm */
+/* ---------- alarm ---------- */
 function playAlarm() {
     stopAlarm();
     alarm.currentTime = 0;
