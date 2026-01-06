@@ -91,19 +91,18 @@ body {
         <div class="label">Minutes</div>
         <div class="columns">
             <div class="col">
-                <button class="adjust add-btn" data-sec="60">+1</button>
+			                <button class="adjust add-btn" data-sec="60">+1</button>
+
                 <button class="adjust sub-btn" data-sec="-60">−1</button>
-				
             </div>
             <div class="col">
-                <button class="adjust add-btn" data-sec="300">+5</button>
-				<button class="adjust sub-btn" data-sec="-300">−5</button>
-                
+			                <button class="adjust add-btn" data-sec="300">+5</button>
+
+                <button class="adjust sub-btn" data-sec="-300">−5</button>
             </div>
             <div class="col">
-                <button class="adjust add-btn" data-sec="600">+10</button>
-				<button class="adjust sub-btn" data-sec="-600">−10</button>
-                
+                                <button class="adjust add-btn" data-sec="600">+10</button>
+<button class="adjust sub-btn" data-sec="-600">−10</button>
             </div>
         </div>
     </div>
@@ -113,14 +112,14 @@ body {
         <div class="label">Seconds</div>
         <div class="columns">
             <div class="col">
-                <button class="adjust add-btn" data-sec="10">+10</button>
-				<button class="adjust sub-btn" data-sec="-10">−10</button>
+			<button class="adjust add-btn" data-sec="10">+10</button>
+                <button class="adjust sub-btn" data-sec="-10">−10</button>
                 
             </div>
             <div class="col">
-                <button class="adjust add-btn" data-sec="30">+30</button>
-				<button class="adjust sub-btn" data-sec="-30">−30</button>
-                
+			                <button class="adjust add-btn" data-sec="30">+30</button>
+
+                <button class="adjust sub-btn" data-sec="-30">−30</button>
             </div>
         </div>
     </div>
@@ -140,7 +139,9 @@ body {
 let running = false;
 let paused = false;
 let endTime = 0;
-let tickTimeout, alarmTimeout;
+let tickTimeout = null;
+let alarmTimer = null;
+let alarmStopTimer = null;
 
 const minEl = document.getElementById("minutes");
 const secEl = document.getElementById("seconds");
@@ -170,13 +171,11 @@ function setEditable(state) {
     adjustButtons.forEach(b => b.disabled = !state);
 }
 
-/* ---------- typing fix (normal typing) ---------- */
+/* ---------- typing ---------- */
 [minEl, secEl].forEach(el => {
 
     el.addEventListener("focus", () => {
-        const raw = el.innerText.replace(/\D/g,"");
-        el.innerText = raw;
-
+        el.innerText = el.innerText.replace(/\D/g,"");
         const r = document.createRange();
         r.selectNodeContents(el);
         const s = window.getSelection();
@@ -188,15 +187,11 @@ function setEditable(state) {
         if (
             !/[0-9]/.test(e.key) &&
             !["Backspace","Delete","ArrowLeft","ArrowRight","Tab"].includes(e.key)
-        ) {
-            e.preventDefault();
-        }
+        ) e.preventDefault();
     });
 
     el.addEventListener("input", () => {
-        let v = el.innerText.replace(/\D/g,"").slice(0,2);
-        el.innerText = v;
-
+        el.innerText = el.innerText.replace(/\D/g,"").slice(0,2);
         const r = document.createRange();
         r.selectNodeContents(el);
         r.collapse(false);
@@ -206,37 +201,40 @@ function setEditable(state) {
     });
 
     el.addEventListener("blur", () => {
-        let v = el.innerText.replace(/\D/g,"");
-        if (el === secEl && parseInt(v || 0) > 59) v = "59";
-        el.innerText = String(parseInt(v || 0)).padStart(2,"0");
+        let v = el.innerText || "0";
+        if (el === secEl && v > 59) v = "59";
+        el.innerText = String(v).padStart(2,"0");
     });
 });
 
-/* ---------- ticking ---------- */
+/* ---------- alarm scheduling ---------- */
+function scheduleAlarm() {
+    clearTimeout(alarmTimer);
+    const delay = Math.max(0, endTime - Date.now());
+    alarmTimer = setTimeout(triggerAlarm, delay);
+}
+
+function triggerAlarm() {
+    running = false;
+    updateDisplay(0);
+    playAlarm();
+    startBtn.disabled = false;
+    pauseBtn.disabled = true;
+    pauseBtn.innerText = "Pause";
+    setEditable(true);
+}
+
+/* ---------- ticking (display only) ---------- */
 function tick() {
     if (!running || paused) return;
 
-    const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
-    updateDisplay(remaining);
-
-    if (remaining === 0) {
-        running = false;
-        playAlarm();
-        updateDisplay(0);
-        startBtn.disabled = false;
-        pauseBtn.disabled = true;
-        pauseBtn.innerText = "Pause";
-        setEditable(true);
-        return;
-    }
-
-    tickTimeout = setTimeout(tick, (endTime - Date.now()) % 1000 || 1000);
+    updateDisplay(Math.ceil((endTime - Date.now()) / 1000));
+    tickTimeout = setTimeout(tick, 250);
 }
 
 /* ---------- controls ---------- */
 startBtn.onclick = () => {
     if (running) return;
-
     const total = getTotalSeconds();
     if (total <= 0) return;
 
@@ -249,6 +247,7 @@ startBtn.onclick = () => {
     pauseBtn.innerText = "Pause";
     setEditable(false);
 
+    scheduleAlarm();
     tick();
 };
 
@@ -259,19 +258,21 @@ pauseBtn.onclick = () => {
         paused = true;
         pauseBtn.innerText = "Resume";
         setEditable(true);
+        clearTimeout(alarmTimer);
     } else {
         endTime = Date.now() + getTotalSeconds() * 1000;
         paused = false;
         pauseBtn.innerText = "Pause";
         setEditable(false);
+        scheduleAlarm();
         tick();
     }
 };
 
 resetBtn.onclick = () => {
-    running = false;
-    paused = false;
+    running = paused = false;
     clearTimeout(tickTimeout);
+    clearTimeout(alarmTimer);
     stopAlarm();
     updateDisplay(0);
     startBtn.disabled = false;
@@ -295,11 +296,11 @@ function playAlarm() {
     stopAlarm();
     alarm.currentTime = 0;
     alarm.play();
-    alarmTimeout = setTimeout(stopAlarm, 3000);
+    alarmStopTimer = setTimeout(stopAlarm, 3000);
 }
 
 function stopAlarm() {
-    clearTimeout(alarmTimeout);
+    clearTimeout(alarmStopTimer);
     alarm.pause();
     alarm.currentTime = 0;
 }
